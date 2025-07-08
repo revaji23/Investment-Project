@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 import re
 import os
+import yfinance as yf
 
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
@@ -48,10 +49,6 @@ def content_extract(soup, class_names):
             break
     return temp_page_text
 
-def get_tickers(text):
-    raw_tickers = re.findall(r"[A-Z]{3,5}\)", text)
-    return [ticker.strip("()") for ticker in raw_tickers]
-
 def get_domain(url):
     return urlparse(url).netloc
 
@@ -61,6 +58,31 @@ def get_datetime(soup):
 
 def get_title(soup):
     return max([tag.get_text(strip=True) for tag in soup.find_all("h1", limit=2)], key=len)
+
+def validate_ticker(ticker):
+    try:
+        yf.Ticker(ticker).info
+        return True
+    except Exception:
+        return False
+
+def extract_tickers(text):
+    ticker_patterns = [
+        r'\$[A-Z]{1,5}',
+        r'([A-Z]{1,5})\)',
+        r'\b[A-Z]{2,5}\b(?=\s+(stock|shares))'
+    ]
+    index_pattern = r'\(\^[A-Z0-9]{1,6}\)'
+    found_tickers = []
+
+    found_indexes = re.findall(index_pattern, text)
+    if found_indexes:
+        found_indexes = [index.strip("()").strip("^") for index in found_indexes]
+    for pattern in ticker_patterns:
+        matches = re.findall(pattern, text)
+        found_tickers.extend([ticker.strip("()").strip("$") for ticker in matches])
+    found_tickers = [ticker for ticker in found_tickers if validate_ticker(ticker) and ticker not in found_indexes]
+    return list(set(found_tickers)), list(set(found_indexes))
 
 def fetch_page_metadata(url):
     COMMON_CLASSES = [
@@ -75,7 +97,8 @@ def fetch_page_metadata(url):
             print(f"⚠️ Failed to fetch page: {response.status_code}")
             return {"content": "", "title": "", 
                     "datetime": "", "url": "", 
-                    "domain": "", "summary": ""}
+                    "domain": "", "summary": "",
+                    "tickers": [], "indexes": []}
         soup = BeautifulSoup(response.text, "html.parser")
         
         # page content
@@ -88,9 +111,8 @@ def fetch_page_metadata(url):
         domain_tag = get_domain(url)
         # page summary
         article_summary = hg_summarize_article(article_content)
-        # page tickers
-        tickers = get_tickers(article_content)
-        print(f"Found Tickers: {tickers}")
+        # page tickers, indexes
+        tickers, indexes = extract_tickers(article_content)
 
         info_dict["content"] = article_content
         info_dict["title"] = title_tag
@@ -98,13 +120,16 @@ def fetch_page_metadata(url):
         info_dict["url"] = url
         info_dict["domain"] = domain_tag
         info_dict["summary"] = article_summary
+        info_dict["tickers"] = tickers
+        info_dict["indexes"] = indexes
 
         return info_dict
     except requests.exceptions.RequestException:
         print("❌ Connection Error")
         return {"content": "", "title": "",
                 "datetime": "", "url": "", 
-                "domain": "", "summary": ""}
+                "domain": "", "summary": "",
+                "tickers": [], "indexes": []}
 
 def main():
     url = input("Enter the article URL: ")
@@ -116,9 +141,8 @@ def main():
     print(f"Article Title: \n{total_info['title']}\n")
     print(f"Article DateTime: \n{total_info['datetime']}\n")
     print(f"Article Domain: \n{total_info['domain']}\n")
-    print(f"Article Summary: \n{total_info['summary']}\n")
+    print(f"Article Tickers: \n{total_info['tickers']}\n")
+    print(f"Article Indexes: \n{total_info['indexes']}\n")
 
 if __name__ == "__main__":
     main()
-
-
