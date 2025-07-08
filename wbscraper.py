@@ -11,6 +11,18 @@ headers = {
     "Accept": "text/html,application/xhtml+xml"
 }
 
+def empty_return():
+    return {
+        "content": "",
+        "title": "",
+        "datetime": "",
+        "url": "",
+        "domain": "",
+        "summary": "",
+        "tickers": [],
+        "indexes": []
+    }
+
 def hg_summarize_article(section):
     api_url = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
     hf_api_key = os.getenv("HF_API_KEY")
@@ -95,10 +107,7 @@ def fetch_page_metadata(url):
         response = requests.get(url, headers=headers)
         if response.status_code != 200:
             print(f"⚠️ Failed to fetch page: {response.status_code}")
-            return {"content": "", "title": "", 
-                    "datetime": "", "url": "", 
-                    "domain": "", "summary": "",
-                    "tickers": [], "indexes": []}
+            return empty_return
         soup = BeautifulSoup(response.text, "html.parser")
         
         # page content
@@ -126,10 +135,7 @@ def fetch_page_metadata(url):
         return info_dict
     except requests.exceptions.RequestException:
         print("❌ Connection Error")
-        return {"content": "", "title": "",
-                "datetime": "", "url": "", 
-                "domain": "", "summary": "",
-                "tickers": [], "indexes": []}
+        return empty_return()
 
 def main():
     url = input("Enter the article URL: ")
