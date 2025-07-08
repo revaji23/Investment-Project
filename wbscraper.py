@@ -137,12 +137,12 @@ def main():
     if not total_info["content"]:
         print("⚠️ Couldn't fetch article content.")
         return
-    print(f"Article Content: \n{total_info['content']}\n")
-    print(f"Article Title: \n{total_info['title']}\n")
-    print(f"Article DateTime: \n{total_info['datetime']}\n")
-    print(f"Article Domain: \n{total_info['domain']}\n")
-    print(f"Article Tickers: \n{total_info['tickers']}\n")
-    print(f"Article Indexes: \n{total_info['indexes']}\n")
+    print(f"Article Content: {total_info['content']}\n")
+    print(f"Article Title: {total_info['title']}\n")
+    print(f"Article DateTime: {total_info['datetime']}\n")
+    print(f"Article Domain: {total_info['domain']}\n")
+    print(f"Article Tickers: {total_info['tickers']}\n")
+    print(f"Article Indexes: {total_info['indexes']}\n")
 
 if __name__ == "__main__":
     main()
