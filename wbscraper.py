@@ -4,7 +4,11 @@ from urllib.parse import urlparse
 import re
 import os
 import yfinance as yf
+import spacy
+import pandas as pd
 
+df = pd.read_csv("companies.csv")
+nlp = spacy.load("en_core_web_sm")
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     "Accept-Language": "en-US,en;q=0.9",
@@ -20,7 +24,8 @@ def empty_return():
         "domain": "",
         "summary": "",
         "tickers": [],
-        "indexes": []
+        "indexes": [],
+        "companies": []
     }
 
 def hg_summarize_article(section):
@@ -78,7 +83,7 @@ def validate_ticker(ticker):
     except Exception:
         return False
 
-def extract_tickers(text):
+def extract_tickers(text, company_list, company_to_ticker):
     ticker_patterns = [
         r'\$[A-Z]{1,5}',
         r'([A-Z]{1,5})\)',
@@ -94,7 +99,29 @@ def extract_tickers(text):
         matches = re.findall(pattern, text)
         found_tickers.extend([ticker.strip("()").strip("$") for ticker in matches])
     found_tickers = [ticker for ticker in found_tickers if validate_ticker(ticker) and ticker not in found_indexes]
+    if company_list:
+        new_tickers = []
+        for company in company_list:
+            key = company.lower().replace(" corp", "")
+            if key in company_to_ticker:
+                new_tickers.append(company_to_ticker[key])
+            if key == "meta":
+                new_tickers.append("META")
+        found_tickers.extend(new_tickers)
+        
     return list(set(found_tickers)), list(set(found_indexes))
+
+def extract_companies(text): 
+    company_to_ticker = dict(zip(df["short name"].str.lower().str.replace(" communications", "").str.replace(".com", "").str.strip(), df["ticker"]))
+    parsed = f" {text.replace("'s", "").replace(".", "").replace(",", "")} "
+    companies = []
+    for name in company_to_ticker:
+        name = "google" if name == "alphabet" else name
+        name = "aMD" if name == "advanced micro devices" else name
+        name = "meta" if name == "facebook" else name
+        if f" {name.title()} " in parsed:
+            companies.append(name.lower())
+    return [companies, company_to_ticker]
 
 def fetch_page_metadata(url):
     COMMON_CLASSES = [
@@ -109,30 +136,20 @@ def fetch_page_metadata(url):
             print(f"⚠️ Failed to fetch page: {response.status_code}")
             return empty_return
         soup = BeautifulSoup(response.text, "html.parser")
-        
-        # page content
-        article_content = content_extract(soup, COMMON_CLASSES)
-        # page title
-        title_tag = get_title(soup)
-        # page datetime
-        datetime_tag = get_datetime(soup)
-        # page domain
-        domain_tag = get_domain(url)
-        # page summary
-        article_summary = hg_summarize_article(article_content)
-        # page tickers, indexes
-        tickers, indexes = extract_tickers(article_content)
 
-        info_dict["content"] = article_content
-        info_dict["title"] = title_tag
-        info_dict["datetime"] = datetime_tag
+        info_dict["content"] = content_extract(soup, COMMON_CLASSES)
+        article_content = info_dict["content"]
+        info_dict["title"] = get_title(soup)
+        info_dict["datetime"] = get_datetime(soup)
         info_dict["url"] = url
-        info_dict["domain"] = domain_tag
-        info_dict["summary"] = article_summary
-        info_dict["tickers"] = tickers
-        info_dict["indexes"] = indexes
-
+        info_dict["domain"] = get_domain(url)
+        info_dict["summary"] = hg_summarize_article(article_content)
+        company_info = extract_companies(article_content)
+        info_dict["companies"], company_map = company_info[0], company_info[1]
+        info_dict["tickers"], info_dict["indexes"] = extract_tickers(article_content, info_dict["companies"], company_map)
+        
         return info_dict
+    
     except requests.exceptions.RequestException:
         print("❌ Connection Error")
         return empty_return()
@@ -149,6 +166,7 @@ def main():
     print(f"Article Domain: {total_info['domain']}\n")
     print(f"Article Tickers: {total_info['tickers']}\n")
     print(f"Article Indexes: {total_info['indexes']}\n")
+    print(f"Article Companies {total_info["companies"]}\n")
 
 if __name__ == "__main__":
     main()
