@@ -62,6 +62,8 @@ def content_extract(soup, class_names):
     for class_name in class_names:
         article_content = soup.find_all(class_=class_name)
         if article_content:
+            for a in article_content.find_all("a"):
+                print(f"\nA: {a}\n")
             temp_page_text = article_content[0].get_text(strip=True)
             break
     return temp_page_text
@@ -86,8 +88,9 @@ def validate_ticker(ticker):
 def extract_tickers(text, company_list, company_to_ticker):
     ticker_patterns = [
         r'\$[A-Z]{1,5}',
-        r'([A-Z]{1,5})\)',
-        r'\b[A-Z]{2,5}\b(?=\s+(stock|shares))'
+        r'\([A-Z]{1,5}\)', 
+        r'\b[A-Z]{2,5}\b(?=\s+(stock|shares))',
+        r'\b([A-Z]{1,5}=F)\b', 
     ]
     index_pattern = r'\(\^[A-Z0-9]{1,6}\)'
     found_tickers = []
@@ -98,7 +101,9 @@ def extract_tickers(text, company_list, company_to_ticker):
     for pattern in ticker_patterns:
         matches = re.findall(pattern, text)
         found_tickers.extend([ticker.strip("()").strip("$") for ticker in matches])
-    found_tickers = [ticker for ticker in found_tickers if validate_ticker(ticker) and ticker not in found_indexes]
+    found_tickers = [ticker for ticker in found_tickers if validate_ticker(ticker) and 
+                     ticker in company_to_ticker.values() and 
+                     ticker not in found_indexes]
     if company_list:
         new_tickers = []
         for company in company_list:
@@ -116,12 +121,14 @@ def extract_companies(text):
     parsed = f" {text.replace("'s", "").replace(".", "").replace(",", "")} "
     companies = []
     for name in company_to_ticker:
-        name = "google" if name == "alphabet" else name
         name = "aMD" if name == "advanced micro devices" else name
-        name = "meta" if name == "facebook" else name
         if f" {name.title()} " in parsed:
             companies.append(name.lower())
     return [companies, company_to_ticker]
+
+def get_all_company_names(tickers, company_map):
+    new_company_list = [name for name, tckr in company_map.items() if tckr in tickers]
+    return new_company_list
 
 def fetch_page_metadata(url):
     COMMON_CLASSES = [
@@ -145,8 +152,9 @@ def fetch_page_metadata(url):
         info_dict["domain"] = get_domain(url)
         info_dict["summary"] = hg_summarize_article(article_content)
         company_info = extract_companies(article_content)
-        info_dict["companies"], company_map = company_info[0], company_info[1]
-        info_dict["tickers"], info_dict["indexes"] = extract_tickers(article_content, info_dict["companies"], company_map)
+        company_list, company_map = company_info[0], company_info[1]
+        info_dict["tickers"], info_dict["indexes"] = extract_tickers(article_content, company_list, company_map)
+        info_dict["companies"] = get_all_company_names(info_dict["tickers"], company_map)
         
         return info_dict
     
@@ -168,5 +176,5 @@ def main():
     print(f"Article Indexes: {total_info['indexes']}\n")
     print(f"Article Companies {total_info["companies"]}\n")
 
-if __name__ == "__main__":
+if __name__ == "__main__":  
     main()
