@@ -157,16 +157,13 @@ def fetch_page_metadata(url):
             return empty_return
         soup = BeautifulSoup(response.text, "html.parser")
 
-        # info_dict["content"] = content_extract(soup, COMMON_CLASSES)
-        # article_content = info_dict["content"]
-        article_content = """European stocks fell while the FTSE 100 (^FTSE) dropped 0.4%. In the U.S., the Dow Jones Industrial Average (^DJI) and S&P 500 (^GSPC) were relatively flat, even as inflows into SPDR S&P 500 ETF Trust (SPY) continued.
-Tesla (TSLA) climbed 2%, while Apple (AAPL.OQ) and Microsoft (MSFT) dipped slightly. Meanwhile, shares of SoftBank Group (9984.T) and Sony Group (SONY) rallied on favorable earnings.
-Elsewhere, Ethereum (ETH-USD) and USD Coin (USDC-USD) showed modest moves in the crypto market."""
-        # info_dict["title"] = get_title(soup)
-        # info_dict["datetime"] = get_datetime(soup)
-        # info_dict["url"] = url
-        # info_dict["domain"] = get_domain(url)
-        # info_dict["summary"] = hg_summarize_article(article_content)
+        info_dict["content"] = content_extract(soup, COMMON_CLASSES)
+        article_content = info_dict["content"]
+        info_dict["title"] = get_title(soup)
+        info_dict["datetime"] = get_datetime(soup)
+        info_dict["url"] = url
+        info_dict["domain"] = get_domain(url)
+        info_dict["summary"] = hg_summarize_article(article_content)
 
         company_info = extract_companies(article_content)
         company_list, company_map = company_info[0], company_info[1]
@@ -186,13 +183,14 @@ Elsewhere, Ethereum (ETH-USD) and USD Coin (USDC-USD) showed modest moves in the
 def main():
     url = input("Enter the article URL: ")
     total_info = fetch_page_metadata(url)
-    # if not total_info["content"]:
-    #     print("⚠️ Couldn't fetch article content.")
-    #     return
-    # print(f"Article Content: {total_info['content']}\n")
-    # print(f"Article Title: {total_info['title']}\n")
-    # print(f"Article DateTime: {total_info['datetime']}\n")
-    # print(f"Article Domain: {total_info['domain']}\n")
+    if not total_info["content"]:
+        print("⚠️ Couldn't fetch article content.")
+        return
+    print(f"Article Content: {total_info['content']}\n")
+    print(f"Article Title: {total_info['title']}\n")
+    print(f"Article DateTime: {total_info['datetime']}\n")
+    print(f"Article Summary: {total_info['summary']}\n")
+    print(f"Article Domain: {total_info['domain']}\n")
     print(f"Article Tickers: {total_info['tickers']}\n")
     print(f"Article Indexes: {total_info['indexes']}\n")
     print(f"Article Companies: {total_info["companies"]}\n")
