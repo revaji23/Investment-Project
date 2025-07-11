@@ -54,17 +54,18 @@ def hg_summarize_article(section):
 def content_extract(soup, class_names):
     paragraphs = soup.find_all("p")
     if paragraphs:
-        temp_page_text = " ".join(p.get_text(strip=True) for p in paragraphs)
+        temp_page_text = " ".join(p.get_text(" ", strip=True) for p in paragraphs)
         temp_page_text = temp_page_text.replace("Oops, something went wrong ", "") if "Oops, something went wrong " in temp_page_text else temp_page_text
     else:
         temp_page_text = ""
-    
+
     for class_name in class_names:
         article_content = soup.find_all(class_=class_name)
         if article_content:
-            for a in article_content.find_all("a"):
-                print(f"\nA: {a}\n")
-            temp_page_text = article_content[0].get_text(strip=True)
+            for a_tag in article_content[0].find_all("a"):
+                a_tag.insert_before(" ")
+                a_tag.insert_after(" ")
+            temp_page_text = article_content[0].get_text(" ", strip=True)
             break
     return temp_page_text
 
@@ -91,13 +92,16 @@ def extract_tickers(text, company_list, company_to_ticker):
         r'\([A-Z]{1,5}\)', 
         r'\b[A-Z]{2,5}\b(?=\s+(stock|shares))',
         r'\b([A-Z]{1,5}=F)\b', 
+        r'\(([A-Z]{1,5}\.[A-Z]{1,4})\)',
     ]
     index_pattern = r'\(\^[A-Z0-9]{1,6}\)'
+    crypto_pattern = r'\b[A-Z]{2,10}-USD\b'
     found_tickers = []
 
     found_indexes = re.findall(index_pattern, text)
     if found_indexes:
         found_indexes = [index.strip("()").strip("^") for index in found_indexes]
+    found_cryptos = re.findall(crypto_pattern, text)
     for pattern in ticker_patterns:
         matches = re.findall(pattern, text)
         found_tickers.extend([ticker.strip("()").strip("$") for ticker in matches])
@@ -114,7 +118,7 @@ def extract_tickers(text, company_list, company_to_ticker):
                 new_tickers.append("META")
         found_tickers.extend(new_tickers)
         
-    return list(set(found_tickers)), list(set(found_indexes))
+    return list(set(found_tickers)), list(set(found_indexes)), list(set(found_cryptos))
 
 def extract_companies(text): 
     company_to_ticker = dict(zip(df["short name"].str.lower().str.replace(" communications", "").str.replace(".com", "").str.strip(), df["ticker"]))
@@ -126,13 +130,22 @@ def extract_companies(text):
             companies.append(name.lower())
     return [companies, company_to_ticker]
 
-def get_all_company_names(tickers, company_map):
-    new_company_list = [name for name, tckr in company_map.items() if tckr in tickers]
-    return new_company_list
+def get_all_company_names(tickers, company_map, indexes):
+    new_company_list = [{"ticker": tckr.strip("^") if "^" in tckr else tckr.strip("^"), "company": name} for name, tckr in company_map.items() if tckr in tickers]
+    tickers = tickers[:]
+    indexes = indexes[:]
+    tickers_to_remove = []
+    for tckr in tickers:
+        if tckr.startswith("^"):
+            indexes.append(tckr.strip("^"))
+            tickers_to_remove.append(tckr)
+    for tckr in tickers_to_remove:
+        tickers.remove(tckr)
+    return new_company_list, tickers, list(set(indexes))
 
 def fetch_page_metadata(url):
     COMMON_CLASSES = [
-        "article__content", "article-content", "main-content",
+        "article__content", "article-content", "main-content", "FeaturedContent-articleBody",
         "post-content", "entry-content", "story-body", "content__article-body",
         "article-body__content__17Yit", "atoms-wrapper", "ArticleBody-articleBody"
     ]
@@ -144,17 +157,25 @@ def fetch_page_metadata(url):
             return empty_return
         soup = BeautifulSoup(response.text, "html.parser")
 
-        info_dict["content"] = content_extract(soup, COMMON_CLASSES)
-        article_content = info_dict["content"]
-        info_dict["title"] = get_title(soup)
-        info_dict["datetime"] = get_datetime(soup)
-        info_dict["url"] = url
-        info_dict["domain"] = get_domain(url)
-        info_dict["summary"] = hg_summarize_article(article_content)
+        # info_dict["content"] = content_extract(soup, COMMON_CLASSES)
+        # article_content = info_dict["content"]
+        article_content = """European stocks fell while the FTSE 100 (^FTSE) dropped 0.4%. In the U.S., the Dow Jones Industrial Average (^DJI) and S&P 500 (^GSPC) were relatively flat, even as inflows into SPDR S&P 500 ETF Trust (SPY) continued.
+Tesla (TSLA) climbed 2%, while Apple (AAPL.OQ) and Microsoft (MSFT) dipped slightly. Meanwhile, shares of SoftBank Group (9984.T) and Sony Group (SONY) rallied on favorable earnings.
+Elsewhere, Ethereum (ETH-USD) and USD Coin (USDC-USD) showed modest moves in the crypto market."""
+        # info_dict["title"] = get_title(soup)
+        # info_dict["datetime"] = get_datetime(soup)
+        # info_dict["url"] = url
+        # info_dict["domain"] = get_domain(url)
+        # info_dict["summary"] = hg_summarize_article(article_content)
+
         company_info = extract_companies(article_content)
         company_list, company_map = company_info[0], company_info[1]
-        info_dict["tickers"], info_dict["indexes"] = extract_tickers(article_content, company_list, company_map)
-        info_dict["companies"] = get_all_company_names(info_dict["tickers"], company_map)
+        temp_tickers, temp_indexes, temp_cryptos = extract_tickers(article_content, company_list, company_map)
+
+        info_dict["companies"], temp_tickers, temp_indexes = get_all_company_names(temp_tickers, company_map, temp_indexes)
+        info_dict["tickers"] = temp_tickers
+        info_dict["indexes"] = temp_indexes
+        info_dict["cryptos"] = temp_cryptos
         
         return info_dict
     
@@ -165,16 +186,17 @@ def fetch_page_metadata(url):
 def main():
     url = input("Enter the article URL: ")
     total_info = fetch_page_metadata(url)
-    if not total_info["content"]:
-        print("⚠️ Couldn't fetch article content.")
-        return
-    print(f"Article Content: {total_info['content']}\n")
-    print(f"Article Title: {total_info['title']}\n")
-    print(f"Article DateTime: {total_info['datetime']}\n")
-    print(f"Article Domain: {total_info['domain']}\n")
+    # if not total_info["content"]:
+    #     print("⚠️ Couldn't fetch article content.")
+    #     return
+    # print(f"Article Content: {total_info['content']}\n")
+    # print(f"Article Title: {total_info['title']}\n")
+    # print(f"Article DateTime: {total_info['datetime']}\n")
+    # print(f"Article Domain: {total_info['domain']}\n")
     print(f"Article Tickers: {total_info['tickers']}\n")
     print(f"Article Indexes: {total_info['indexes']}\n")
-    print(f"Article Companies {total_info["companies"]}\n")
+    print(f"Article Companies: {total_info["companies"]}\n")
+    print(f"Article Cryptos: {total_info["cryptos"]}\n")
 
 if __name__ == "__main__":  
     main()
